@@ -219,6 +219,127 @@ export async function apply(ctx, config) {
     if (kind !== null) play(kind)
   })
 
+  // ------------------------------------------------------------- the slider's bridge
+  // The browser half draws the volume control on this bundle's own page in the
+  // Plugins panel, and a page cannot touch volume.txt itself. This route is that
+  // bridge, and it is optional by design: without a webServer service the chime
+  // still works exactly as before, and only the on-screen slider is missing.
+  const routeDisposers = []
+  try {
+    ctx.effect?.(() => () => {
+      for (const dispose of routeDisposers) {
+        try {
+          dispose()
+        } catch {
+          // Already gone; nothing to withdraw.
+        }
+      }
+    })
+  } catch {
+    // An older context with no effect(): the row's own teardown still unregisters.
+  }
+
+  /** What the plugin would use for the next chime, override included. */
+  function effectiveVolume() {
+    return readVolumeOverride() ?? configured
+  }
+
+  /** One chime at an exact volume, straight away: the slider's own feedback. */
+  function preview(volume) {
+    try {
+      spawn(EXE_PATH, ['ding', String(volume)], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      }).unref()
+    } catch {
+      // No audio device; the save is still worth doing.
+    }
+  }
+
+  /** Answer one JSON body, and never let a dead socket throw into the plugin. */
+  function send(res, code, payload) {
+    try {
+      res.statusCode = code
+      res.setHeader('content-type', 'application/json; charset=utf-8')
+      res.setHeader('cache-control', 'no-store')
+      res.end(JSON.stringify(payload))
+    } catch {
+      // The page navigated away mid-answer.
+    }
+  }
+
+  /**
+   * Only the local DSH page may drive this: the route writes a file, and the
+   * volume is a local preference. Anything that is not a loopback authority
+   * has to be approved by the host's own connection fence.
+   */
+  function sameOrigin(req) {
+    const host = String(req?.headers?.host ?? '')
+    if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host)) return true
+    try {
+      const fence = ctx.get?.('connection')
+      if (fence && typeof fence.requestRejection === 'function') {
+        const code = fence.requestRejection(req)
+        return code === undefined || code === null || code === false
+      }
+    } catch {
+      // No fence to ask: fall through to the refusal.
+    }
+    return false
+  }
+
+  ctx.inject(['webServer'], (scoped) => {
+    try {
+      routeDisposers.push(
+        scoped.webServer.register({
+          kind: 'exact',
+          path: '/dsh-chime/volume',
+          handler: async (req, res) => {
+            if (!sameOrigin(req)) return send(res, 403, { error: 'not a local page' })
+            const method = String(req.method ?? 'GET').toUpperCase()
+
+            if (method === 'GET') {
+              return send(res, 200, { volume: effectiveVolume(), file: existsSync(VOLUME_PATH) })
+            }
+            if (method !== 'POST') return send(res, 405, { error: 'GET or POST only' })
+
+            let body = ''
+            try {
+              for await (const chunk of req) body += chunk
+            } catch {
+              // The parse below reports it.
+            }
+            let asked
+            try {
+              asked = JSON.parse(body === '' ? '{}' : body)
+            } catch {
+              return send(res, 400, { error: 'body must be JSON' })
+            }
+
+            const volume = parseVolume(asked?.volume, null)
+            if (volume === null) return send(res, 400, { error: 'volume must be 0-200' })
+
+            try {
+              const { writeFileSync } = await import('node:fs')
+              writeFileSync(VOLUME_PATH, `${volume}\n`)
+            } catch (error) {
+              log(`cannot write volume.txt: ${error?.message ?? error}`)
+              return send(res, 500, { error: 'volume.txt is not writable' })
+            }
+
+            if (asked?.preview === true) preview(volume)
+            log(`volume set to ${volume}% from the page`)
+            return send(res, 200, { volume, file: true })
+          },
+        }),
+      )
+      log('volume route armed at /dsh-chime/volume')
+    } catch (error) {
+      log(`cannot serve the volume route: ${error?.message ?? error}`)
+    }
+  })
+
   log(
     `armed (turnEnd=${options.onTurnEnd} ask=${options.onAsk} problem=${options.onProblem} ` +
       `gap=${options.minGapMs}ms volume=${configured}% exe=${EXE_PATH})`,
