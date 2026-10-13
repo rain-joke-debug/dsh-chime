@@ -122,6 +122,7 @@ await apply(ctx, { minGapMs: 0 })
 check('registers one session/event listener', listeners.has('session/event'), true)
 
 check('player is built', existsSync(join(packageDir, 'bin', 'chime.exe')), true)
+check('volume window is built', existsSync(join(packageDir, 'bin', 'chime-volume.exe')), true)
 
 const summary = failures === 0 ? 'all checks passed' : `${failures} CHECK(S) FAILED`
 writeFileSync(join(packageDir, 'test', 'last-run.txt'), `${checks} checks, ${summary}\n`)

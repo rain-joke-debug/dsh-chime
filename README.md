@@ -4,7 +4,7 @@ DSH（DeepSeek Harness）答完话、或者停下来等你拍板的时候，响�
 
 - **运行时不花 token**：它不调用模型，也不往对话里塞任何内容。每响一次的代价是起一个几毫秒的小进程。
 - **不碰桌宠**，跟任何宠物插件互不干扰。
-- **只支持 Windows**：播放器是个 .NET Framework 小程序（Windows 自带，不用装运行时），仓库里已经编译好了，不用你自己编译。
+- **只支持 Windows**：两个小程序都是 .NET Framework 程序（Windows 自带，不用装运行时），仓库里已经编译好了，不用你自己编译。
 
 ## 什么时候响
 
@@ -55,16 +55,21 @@ plugin_manager install_bundle target="github:rain-joke-debug/dsh-chime"
 
 ## 改音量
 
+![音量窗口](docs/volume-window.png)
+
+**双击 `bin\chime-volume.exe`**：拖滑块 → 停手自动试听一次 → 点保存。不用重启 DSH。
+
 音量是百分比，`100` 是调好的标准音量，`0` 静音，超过约 `130` 大声的地方会削顶（clipping）。
 
 | 方式 | 什么时候生效 | 怎么做 |
 |---|---|---|
-| `volume.txt` | **下一声立刻生效**，不用重启 | `powershell -File tools\volume.ps1 60` |
+| 音量窗口 | **下一声立刻生效** | 双击 `bin\chime-volume.exe` |
+| 命令行 | **下一声立刻生效** | `powershell -File tools\volume.ps1 60` |
+| 自己写文件 | **下一声立刻生效** | 在插件目录建 `volume.txt`，内容就一个数字 |
 | 配置里的 `volume` | 重载插件后 | 见下面的配置示例 |
-| 命令行 | 只是试听，不改设置 | `bin\chime.exe ding 60` |
+| 只想试听 | 不改设置 | `bin\chime.exe ding 60` |
 
-`tools\volume.ps1` 会写一个 `volume.txt`，然后立刻用新音量放一遍给你听。
-`impl.js` 每次响之前都会重读这个文件，所以调音量不用重启 DSH、也不用重载插件。
+窗口和 `volume.ps1` 写的是同一个 `volume.txt`；`impl.js` 每次响之前重读它，所以调音量不用重启 DSH，也不用重载插件。
 
 ## 配置
 
@@ -87,11 +92,11 @@ plugin_manager install_bundle target="github:rain-joke-debug/dsh-chime"
 | `minGapMs` | `900` | 两次响声的最小间隔（毫秒） |
 | `volume` | `100` | 音量百分比，0–200 |
 
-改完 `cordis.patch.yml` 需要重开 DSH；只有音量可以用 `volume.txt` 免重启改。
+改完 `cordis.patch.yml` 需要重开 DSH；只有音量可以用音量窗口或 `volume.txt` 免重启改。
 
 ## 自己编译
 
-改了 `src/chime.cs` 才需要（仓库里的 `bin/chime.exe` 是编译好的）：
+改了 `src\*.cs` 才需要（仓库里的两个 exe 都是编译好的）：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\build.ps1
@@ -105,29 +110,34 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\build.ps1
 node test\host.test.mjs
 ```
 
-33 项检查，覆盖判定逻辑、子代理过滤、配置开关和音量解析。**测试不会发出声音。**
+34 项检查，覆盖判定逻辑、子代理过滤、配置开关和音量解析。**测试不会发出声音。**
 
 ## 目录
 
 ```
-boot.js                Loader 入口（带时间戳动态导入，改代码不用重启 DSH）
-impl.js                宿主半：订阅 session/event，判定要不要响，按音量起播放器
-cordis.patch.yml       安装时自动插入的 loader 行（id: turn-chime）
-src/chime.cs           播放器源码（C# 5，内存里合成波形，不带音频文件）
-bin/chime.exe          编译产物
-tools/build.ps1        编译
-tools/volume.ps1       改音量 + 试听
-test/host.test.mjs     单测
-docs/sounds/*.wav      导出的音频，给别的程序用，也方便试听
-chime.log              运行日志（每次响都记一行，gitignore）
-volume.txt             音量覆盖值（gitignore）
+boot.js                 Loader 入口（带时间戳动态导入，改代码不用重启 DSH）
+impl.js                 宿主半：订阅 session/event，判定要不要响，按音量起播放器
+cordis.patch.yml        安装时自动插入的 loader 行（id: turn-chime）
+src/chime.cs            播放器源码（C# 5，内存里合成波形，不带音频文件）
+src/volume.cs           音量窗口源码（WinForms，只有一个滑块）
+bin/chime.exe           播放器（编译产物）
+bin/chime-volume.exe    音量窗口（编译产物）
+tools/build.ps1         编译上面两个 exe
+tools/app.manifest      音量窗口的清单：现代控件样式 + DPI 感知
+tools/volume.ps1        命令行改音量 + 试听
+test/host.test.mjs      单测
+docs/sounds/*.wav       导出的音频，给别的程序用，也方便试听
+docs/volume-window.png  音量窗口截图
+chime.log               运行日志（每次响都记一行，gitignore）
+volume.txt              音量覆盖值（gitignore）
 ```
 
 ## 已知限制
 
-- **只有 Windows**。播放走的是 .NET 的 `SoundPlayer`。
+- **只有 Windows**。播放走的是 .NET 的 `SoundPlayer`，音量窗口是 WinForms。
 - agent 用普通文字提问（不走 `ask_user_question` 工具）时，只会响普通的 `ding`——那种提问没有独立的会话事件，分辨不出来。
-- 它只管自己这一层的音量，系统音量、输出设备不是它管的。
+- 音量窗口只管插件自己这一层的音量，系统音量、输出设备不是它管的。
+- 音量窗口的布局按系统 DPI 缩放；拖到缩放比例不同的另一个显示器上不会重新排版，重开一次即可。
 
 ## License
 
