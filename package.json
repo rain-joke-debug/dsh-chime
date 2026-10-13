@@ -1,6 +1,6 @@
 {
   "name": "dsh-chime",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "description": "DSH 提醒音：答完了响一声，需要你拍板时响三声。音量在插件页里拖滑块。不碰桌宠、不调模型、不花 token。",

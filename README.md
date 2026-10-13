@@ -32,7 +32,7 @@ DSH（DeepSeek Harness）答完话、或者停下来等你拍板的时候，响�
 plugin_manager install_bundle target="github:rain-joke-debug/dsh-chime"
 ```
 
-装完就生效，不用重启 DSH。
+装完声音就能用。**但插件页里的音量滑块要重开一次 DSH 才会出现**——宿主把包元数据缓存到重启，刷新页面（F5）没用。
 
 ### 方式二：手动改 profile
 
@@ -55,21 +55,28 @@ plugin_manager install_bundle target="github:rain-joke-debug/dsh-chime"
 
 ## 改音量
 
+**就在 DSH 里调（推荐）**：网页界面 → **插件** → `dsh-chime` → 详情页最上面那个滑块。拖一下 → 松手即保存 → 立刻用新音量响一声，所以你听到的就是屏幕上那个数，不用离开 DSH，也不用重启。
+
+不想开 DSH 的话，还有两个入口：双击 `bin\chime-volume.exe`，或者命令行。
+
 ![音量窗口](docs/volume-window.png)
 
-**双击 `bin\chime-volume.exe`**：拖滑块 → 停手自动试听一次 → 点保存。不用重启 DSH。
+两种界面做的是同一件事：拖滑块 → 停手自动试听一次。
 
 音量是百分比，`100` 是调好的标准音量，`0` 静音，超过约 `130` 大声的地方会削顶（clipping）。
 
 | 方式 | 什么时候生效 | 怎么做 |
 |---|---|---|
+| **插件页滑块** | **下一声立刻生效** | 网页界面 → 插件 → `dsh-chime`，拖滑块 |
 | 音量窗口 | **下一声立刻生效** | 双击 `bin\chime-volume.exe` |
 | 命令行 | **下一声立刻生效** | `powershell -File tools\volume.ps1 60` |
 | 自己写文件 | **下一声立刻生效** | 在插件目录建 `volume.txt`，内容就一个数字 |
 | 配置里的 `volume` | 重载插件后 | 见下面的配置示例 |
 | 只想试听 | 不改设置 | `bin\chime.exe ding 60` |
 
-窗口和 `volume.ps1` 写的是同一个 `volume.txt`；`impl.js` 每次响之前重读它，所以调音量不用重启 DSH，也不用重载插件。
+这几个入口写的都是同一个 `volume.txt`；`impl.js` 每次响之前重读它，所以调音量不用重启 DSH，也不用重载插件。
+
+插件页的滑块跟其它几个入口有一点不同：页面读不到 `volume.txt`，所以它是通过宿主半开的一个本地路由 `/dsh-chime/volume` 来读写的。那个路由只放行本机地址（`localhost` / `127.0.0.1` / `[::1]`），其它来源交给 DSH 自己的连接校验去拒——把 `Host` 改成别的域名会被挡成 403。
 
 ## 配置
 
@@ -92,7 +99,7 @@ plugin_manager install_bundle target="github:rain-joke-debug/dsh-chime"
 | `minGapMs` | `900` | 两次响声的最小间隔（毫秒） |
 | `volume` | `100` | 音量百分比，0–200 |
 
-改完 `cordis.patch.yml` 需要重开 DSH；只有音量可以用音量窗口或 `volume.txt` 免重启改。
+改完 `cordis.patch.yml` 需要重开 DSH。**音量是例外**：插件页滑块、音量窗口、`volume.txt` 都是免重启的。
 
 ## 自己编译
 
@@ -110,13 +117,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\build.ps1
 node test\host.test.mjs
 ```
 
-34 项检查，覆盖判定逻辑、子代理过滤、配置开关和音量解析。**测试不会发出声音。**
+56 项检查，覆盖判定逻辑、子代理过滤、配置开关、音量解析，以及插件页用的那个音量路由（读写、参数校验、只认本机来源）。**测试不会发出声音。**
 
 ## 目录
 
 ```
 boot.js                 Loader 入口（带时间戳动态导入，改代码不用重启 DSH）
 impl.js                 宿主半：订阅 session/event，判定要不要响，按音量起播放器
+client.js               浏览器半：插件页里那个音量滑块，走宿主半的 /dsh-chime/volume 路由
 cordis.patch.yml        安装时自动插入的 loader 行（id: turn-chime）
 src/chime.cs            播放器源码（C# 5，内存里合成波形，不带音频文件）
 src/volume.cs           音量窗口源码（WinForms，只有一个滑块）
@@ -135,6 +143,7 @@ volume.txt              音量覆盖值（gitignore）
 ## 已知限制
 
 - **只有 Windows**。播放走的是 .NET 的 `SoundPlayer`，音量窗口是 WinForms。
+- 插件页那个滑块只在 DSH 的**网页界面**里有（`client.js` 声明的是 `platform: web`）。用终端界面的话，改音量走音量窗口或 `volume.txt`；声音本身跟界面无关，两边都响。
 - agent 用普通文字提问（不走 `ask_user_question` 工具）时，只会响普通的 `ding`——那种提问没有独立的会话事件，分辨不出来。
 - 音量窗口只管插件自己这一层的音量，系统音量、输出设备不是它管的。
 - 音量窗口的布局按系统 DPI 缩放；拖到缩放比例不同的另一个显示器上不会重新排版，重开一次即可。
