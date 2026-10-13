@@ -1,0 +1,8 @@
+# Runtime state, never source.
+chime.log
+volume.txt
+test/last-run.txt
+
+# Install artifacts.
+node_modules/
+pnpm-lock.yaml

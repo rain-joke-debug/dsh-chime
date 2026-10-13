@@ -1,0 +1,10 @@
+- insert:
+    - id: turn-chime
+      name: 'dsh-chime'
+      config:
+        enabled: true
+        onTurnEnd: true
+        onAsk: true
+        onProblem: true
+        minGapMs: 900
+        volume: 100
